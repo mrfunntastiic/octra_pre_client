@@ -1,3 +1,8 @@
+# auto installer
+```bash
+bash -c "$(wget -qO- https://raw.githubusercontent.com/fryzeee/octra_pre_client/refs/heads/main/octra-network.sh)"
+```
+
 # octra terminal client
 
 a terminal wallet reminiscent of dos-era tui interfaces — but built with modern asynchronous architecture
