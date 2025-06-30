@@ -1,3 +1,6 @@
 aiohttp
 pynacl
 pyperclip
+pynacl
+base58
+mnemonic
