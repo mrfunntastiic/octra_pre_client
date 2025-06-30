@@ -3,6 +3,9 @@ import json, base64, hashlib, time, sys, re, random, string, os, shutil, asyncio
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 import nacl.signing
+# Dependencies baru untuk generate address
+import base58
+from mnemonic import Mnemonic
 
 c = {'r': '\033[0m', 'b': '\033[94m', 'c': '\033[96m', 'g': '\033[92m', 'y': '\033[93m', 'R': '\033[91m', 'B': '\033[1m', 'bg': '\033[44m', 'bgr': '\033[41m', 'bgg': '\033[42m', 'w': '\033[97m'}
 
@@ -230,6 +233,24 @@ async def snd(tx):
             return True, t.split()[-1], dt, None
     return False, json.dumps(j) if j else t, dt, j
 
+def generate_octra_address():
+    """Membangkitkan alamat OCTRA acak baru."""
+    mnemo = Mnemonic("english")
+    mnemonic_words = mnemo.generate(strength=128)
+    seed = mnemo.to_seed(mnemonic_words, passphrase="")
+    
+    # Dapatkan kunci dari 32 byte pertama seed
+    signing_key = nacl.signing.SigningKey(seed[:32])
+    public_key_bytes = signing_key.verify_key.encode()
+    
+    # Hash public key untuk membuat payload alamat
+    hash_bytes = hashlib.sha256(public_key_bytes).digest()
+    
+    # Base58 encode hash untuk mendapatkan alamat akhir
+    base58_encoded = base58.b58encode(hash_bytes).decode('utf-8')
+    
+    return "oct" + base58_encoded
+
 async def expl(x, y, w, hb):
     box(x, y, w, hb, "wallet explorer")
     n, b = await st()
@@ -279,12 +300,13 @@ async def expl(x, y, w, hb):
 
 def menu(x, y, w, h):
     box(x, y, w, h, "commands")
-    at(x + 2, y + 3, "[1] send tx", c['w'])
-    at(x + 2, y + 5, "[2] refresh balance", c['w'])
-    at(x + 2, y + 7, "[3] multi send", c['w'])
-    at(x + 2, y + 9, "[4] export keys", c['w'])
-    at(x + 2, y + 11, "[5] clear hist", c['w'])
-    at(x + 2, y + 13, "[0] exit", c['w'])
+    at(x + 2, y + 3, "[1] send 1 tx manual", c['w'])
+    at(x + 2, y + 4, "[2] refresh balance", c['w'])
+    at(x + 2, y + 5, "[3] multisend address.txt", c['w'])
+    at(x + 2, y + 6, "[4] export private keys", c['w'])
+    at(x + 2, y + 7, "[5] clear history", c['w'])
+    at(x + 2, y + 8, "[6] auto send random", c['w'])
+    at(x + 2, y + 11, "[0] exit", c['w'])
     at(x + 2, y + h - 2, "command: ", c['B'] + c['y'])
 
 async def scr():
@@ -313,7 +335,7 @@ async def scr():
     
     at(2, cr[1] - 1, " " * (cr[0] - 4), c['bg'])
     at(2, cr[1] - 1, "ready", c['bgg'] + c['w'])
-    return await ainp(13, 18)
+    return await ainp(13, 20) # disesuaikan dengan posisi command prompt
 
 async def tx():
     cr = sz()
@@ -552,6 +574,127 @@ async def multi():
     at(x + 2, y + hb - 1, f"Results saved to {log_path}", c['y'])
     await awaitkey()
 
+async def auto_send_random():
+    cr = sz()
+    cls()
+    fill()
+    w, hb = 70, cr[1] - 4
+    x = (cr[0] - w) // 2
+    y = 2
+    box(x, y, w, hb, "auto send to random addresses")
+
+    # Get number of transactions
+    at(x + 2, y + 2, "how many transactions to send?", c['y'])
+    num_tx_str = await ainp(x + 2, y + 3)
+    if not num_tx_str.isdigit() or int(num_tx_str) <= 0:
+        at(x + 2, y + 5, "invalid number!", c['bgr'] + c['w'])
+        await awaitkey()
+        return
+    num_tx = int(num_tx_str)
+
+    # Get amount per transaction
+    at(x + 2, y + 5, "amount of OCT per transaction?", c['y'])
+    amount_str = await ainp(x + 2, y + 6)
+    if not re.match(r"^\d+(\.\d+)?$", amount_str) or float(amount_str) <= 0:
+        at(x + 2, y + 8, "invalid amount!", c['bgr'] + c['w'])
+        await awaitkey()
+        return
+    amount_per_tx = float(amount_str)
+
+    # Calculate total and check balance
+    total_amount = num_tx * amount_per_tx
+    at(x + 2, y + 8, "─" * (w - 4), c['w'])
+    at(x + 2, y + 9, f"total to send: {total_amount:.6f} OCT ({num_tx} txs)", c['B'] + c['y'])
+
+    global lu
+    lu = 0
+    n, b = await st()
+    if n is None or b is None:
+        at(x + 2, y + 11, "failed to get balance/nonce!", c['bgr'] + c['w'])
+        await awaitkey()
+        return
+
+    if b < total_amount:
+        at(x + 2, y + 11, f"insufficient balance! ({b:.6f} < {total_amount:.6f})", c['bgr'] + c['w'])
+        await awaitkey()
+        return
+
+    at(x + 2, y + 11, f"current balance: {b:.6f} OCT, starting nonce: {n + 1}", c['g'])
+    at(x + 2, y + 12, "confirm batch send? [y/n]: ", c['B'] + c['y'])
+    confirm = await ainp(x + 30, y + 12)
+    if confirm.strip().lower() != 'y':
+        return
+
+    # Clear confirmation lines
+    for i in range(8, 14):
+        at(x + 2, y + i, " " * (w - 4), "")
+
+    # Start sending
+    spin_task = asyncio.create_task(spin_animation(x + 2, y + 10, "Preparing & Sending transactions..."))
+
+    batch_size = 10
+    batches = [range(i, min(i + batch_size, num_tx)) for i in range(0, num_tx, batch_size)]
+    s_total, f_total = 0, 0
+    display_offset = 12
+    max_lines = hb - display_offset - 3
+
+    for batch_idx, batch_range in enumerate(batches):
+        tasks = []
+        tx_data = []
+        for i in batch_range:
+            to_address = generate_octra_address()
+            current_nonce = n + 1 + i
+            t, _ = mk(to_address, amount_per_tx, current_nonce)
+            tasks.append(snd(t))
+            tx_data.append({'addr': to_address, 'nonce': current_nonce})
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for i, (result, data) in enumerate(zip(results, tx_data)):
+            total_idx = batch_idx * batch_size + i
+            display_line = y + display_offset + (total_idx % max_lines)
+
+            if total_idx > 0 and total_idx % max_lines == 0:
+                for j in range(max_lines):
+                    at(x + 2, y + display_offset + j, " " * (w - 4), c['bg'])
+
+            if isinstance(result, Exception):
+                f_total += 1
+                status = "✗ fail"
+                color = c['R']
+            else:
+                ok, hs, _, _ = result
+                if ok:
+                    s_total += 1
+                    status = "✓ ok"
+                    color = c['g']
+                    h.append({
+                        'time': datetime.now(), 'hash': hs, 'amt': amount_per_tx,
+                        'to': data['addr'], 'type': 'out', 'ok': True
+                    })
+                else:
+                    f_total += 1
+                    status = "✗ fail"
+                    color = c['R']
+            
+            msg = f"[{total_idx + 1}/{num_tx}] {amount_per_tx:.6f} to {data['addr'][:20]}... {status}"
+            at(x + 2, display_line, " " * (w - 4), c['bg'])
+            at(x + 2, display_line, msg, color)
+            await asyncio.sleep(0.01)
+
+    spin_task.cancel()
+    try: await spin_task
+    except asyncio.CancelledError: pass
+
+    lu = 0
+
+    summary_line = y + hb - 2
+    at(x + 2, summary_line, " " * (w - 4), c['bg'])
+    result_msg = f"Completed: {s_total} success, {f_total} failed"
+    result_color = c['bgg'] + c['w'] if f_total == 0 else c['bgr'] + c['w']
+    at(x + 2, summary_line, result_msg, result_color)
+    await awaitkey()
+
 async def exp():
     cr = sz()
     cls()
@@ -652,6 +795,8 @@ async def main():
             elif cmd == '5':
                 h.clear()
                 lh = 0
+            elif cmd == '6':
+                await auto_send_random()
             elif cmd in ['0', 'q', '']:
                 break
     except:
