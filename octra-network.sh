@@ -16,7 +16,7 @@
 # --- Configuration ---
 # Change these variables if needed
 REPO_URL="https://github.com/fryzeee/octra_pre_client.git"
-DEST_DIR_NAME="octra-client"
+DEST_DIR_NAME="octra-network"
 VENV_DIR="venv"
 MAIN_DEST_DIR="$HOME"
 PYTHON_VERSION="3.10"
