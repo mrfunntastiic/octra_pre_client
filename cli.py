@@ -533,17 +533,23 @@ async def multi():
     else:
         at(x + 2, y + hb - 2, result_msg, c['bgr'] + c['w'])
     
-    # Save results to log file
+    # Save results to log file in log/ directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_filename = f"multisend_{timestamp}.log"
-    with open(log_filename, 'w') as f:
+    
+    # Create log directory if it doesn't exist
+    os.makedirs('log', exist_ok=True)
+    
+    # Save to log/ directory
+    log_path = os.path.join('log', log_filename)
+    with open(log_path, 'w') as f:
         f.write(f"Multi-send results - {timestamp}\n")
         f.write(f"Total addresses: {len(rcp)}\n")
         f.write(f"Success: {s_total}\n")
         f.write(f"Failed: {f_total}\n")
         f.write(f"Total amount sent: {tot:.6f} OCT\n")
     
-    at(x + 2, y + hb - 1, f"Results saved to {log_filename}", c['y'])
+    at(x + 2, y + hb - 1, f"Results saved to {log_path}", c['y'])
     await awaitkey()
 
 async def exp():
