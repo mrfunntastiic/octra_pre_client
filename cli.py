@@ -408,87 +408,101 @@ async def multi():
     x = (cr[0] - w) // 2
     y = 2
     box(x, y, w, hb, "multi send")
-    at(x + 2, y + 2, "loading recipients from address.txt...", c['y'])
-    at(x + 2, y + 3, "type [esc] to cancel", c['c'])
-    at(x + 2, y + 4, "─" * (w - 4), c['w'])
-
-    rcp = []
-    tot = 0
-    ly = y + 5
-
+    
+    # Check for address.txt file
+    if not os.path.exists('address.txt'):
+        at(x + 2, y + 2, "Error: address.txt not found", c['bgr'] + c['w'])
+        at(x + 2, y + 3, "Create address.txt with format:", c['y'])
+        at(x + 2, y + 4, "oct123...abc 0.1", c['w'])
+        at(x + 2, y + 5, "oct456...def 0.2", c['w'])
+        at(x + 2, y + 6, "(one address per line)", c['y'])
+        await awaitkey()
+        return
+    
+    # Read addresses from file
     try:
-        with open("address.txt", "r") as f:
-            lines = f.readlines()
-    except FileNotFoundError:
-        at(x + 2, ly, "address.txt not found!", c['R'])
-        await ainp(x + 2, ly + 1)
+        with open('address.txt', 'r') as f:
+            lines = [line.strip() for line in f if line.strip()]
+        
+        rcp = []
+        for line in lines:
+            parts = line.split()
+            if len(parts) >= 2:  # Changed to >= to handle any extra spaces
+                address = parts[0]
+                amount = parts[1]
+                if b58.match(address) and re.match(r"^\d+(\.\d+)?$", amount) and float(amount) > 0:
+                    rcp.append((address, float(amount)))
+        
+        if not rcp:
+            at(x + 2, y + 2, "No valid addresses in address.txt", c['bgr'] + c['w'])
+            at(x + 2, y + 3, "Format: address amount", c['y'])
+            at(x + 2, y + 4, "Example:", c['y'])
+            at(x + 2, y + 5, "octg3VxfmbH6I2XwZDCGHy03z4VuCdACW1keZfP2lrF3gh 0.1", c['w'])
+            await awaitkey()
+            return
+    except Exception as e:
+        at(x + 2, y + 2, f"Error reading address.txt: {str(e)}", c['bgr'] + c['w'])
+        await awaitkey()
         return
-
-    for line in lines:
-        if ly >= y + hb - 8:
-            break
-        line = line.strip()
-        if not line:
-            continue
-        p = line.split()
-        if len(p) == 2 and b58.match(p[0]) and re.match(r"^\d+(\.\d+)?$", p[1]) and float(p[1]) > 0:
-            a = float(p[1])
-            rcp.append((p[0], a))
-            tot += a
-            at(x + 2, ly, f"[{len(rcp)}] {p[0][:20]}... +{a:.6f}", c['g'])
-        else:
-            at(x + 2, ly, f"invalid: {line}", c['R'])
-        ly += 1
-
-    if not rcp:
-        return
-    at(x + 2, y + hb - 7, "─" * (w - 4), c['w'])
-    at(x + 2, y + hb - 6, f"total: {tot:.6f} oct to {len(rcp)} addresses", c['B'] + c['y'])
-
+    
+    # Display loaded addresses
+    at(x + 2, y + 2, f"Loaded {len(rcp)} addresses from address.txt", c['g'])
+    at(x + 2, y + 3, "─" * (w - 4), c['w'])
+    
+    # Calculate total amount
+    tot = sum(a for _, a in rcp)
+    at(x + 2, y + 4, f"Total amount: {tot:.6f} OCT", c['B'] + c['y'])
+    
+    # Check balance and nonce
     global lu
     lu = 0
     n, b = await st()
     if n is None:
-        at(x + 2, y + hb - 5, "failed to get nonce!", c['bgr'] + c['w'])
-        at(x + 2, y + hb - 4, "press enter to go back...", c['y'])
-        await ainp(x + 2, y + hb - 3)
+        at(x + 2, y + 6, "Failed to get nonce!", c['bgr'] + c['w'])
+        await awaitkey()
         return
+    
     if not b or b < tot:
-        at(x + 2, y + hb - 5, f"insufficient balance! ({b:.6f} < {tot})", c['bgr'] + c['w'])
-        at(x + 2, y + hb - 4, "press enter to go back...", c['y'])
-        await ainp(x + 2, y + hb - 3)
+        at(x + 2, y + 6, f"Insufficient balance! ({b:.6f} < {tot})", c['bgr'] + c['w'])
+        await awaitkey()
         return
-
-    at(x + 2, y + hb - 5, f"send all? [y/n] (starting nonce: {n + 1}): ", c['y'])
-    if (await ainp(x + 48, y + hb - 5)).strip().lower() != 'y':
+    
+    at(x + 2, y + 6, f"Starting nonce: {n + 1}", c['y'])
+    at(x + 2, y + 7, "─" * (w - 4), c['w'])
+    at(x + 2, y + 8, "Confirm batch send? [y/n]: ", c['B'] + c['y'])
+    confirm = await ainp(x + 30, y + 8)
+    if confirm.strip().lower() != 'y':
         return
-
-    spin_task = asyncio.create_task(spin_animation(x + 2, y + hb - 3, "sending transactions"))
-
-    batch_size = 5
+    
+    # Start sending transactions
+    spin_task = asyncio.create_task(spin_animation(x + 2, y + 10, "Sending transactions"))
+    
+    batch_size = 5  # Number of parallel transactions
     batches = [rcp[i:i+batch_size] for i in range(0, len(rcp), batch_size)]
     s_total, f_total = 0, 0
-
+    
     for batch_idx, batch in enumerate(batches):
         tasks = []
         for i, (to, a) in enumerate(batch):
             idx = batch_idx * batch_size + i
-            at(x + 2, y + hb - 2, f"[{idx + 1}/{len(rcp)}] preparing batch...", c['c'])
+            at(x + 2, y + 12, f"[{idx + 1}/{len(rcp)}] Preparing...", c['c'])
             t, _ = mk(to, a, n + 1 + idx)
             tasks.append(snd(t))
-
+        
         results = await asyncio.gather(*tasks, return_exceptions=True)
-
+        
         for i, (result, (to, a)) in enumerate(zip(results, batch)):
             idx = batch_idx * batch_size + i
             if isinstance(result, Exception):
                 f_total += 1
-                at(x + 55, y + hb - 2, "✗ fail ", c['R'])
+                status = "✗ fail "
+                color = c['R']
             else:
                 ok, hs, _, _ = result
                 if ok:
                     s_total += 1
-                    at(x + 55, y + hb - 2, "✓ ok   ", c['g'])
+                    status = "✓ ok   "
+                    color = c['g']
                     h.append({
                         'time': datetime.now(),
                         'hash': hs,
@@ -499,21 +513,38 @@ async def multi():
                     })
                 else:
                     f_total += 1
-                    at(x + 55, y + hb - 2, "✗ fail ", c['R'])
-            at(x + 2, y + hb - 2, f"[{idx + 1}/{len(rcp)}] {a:.6f} to {to[:20]}...", c['c'])
+                    status = "✗ fail "
+                    color = c['R']
+            
+            at(x + 2, y + 13 + i, f"[{idx + 1}/{len(rcp)}] {a:.6f} to {to[:20]}... {status}", color)
             await asyncio.sleep(0.05)
-
+    
     spin_task.cancel()
     try:
         await spin_task
     except asyncio.CancelledError:
         pass
-
+    
     lu = 0
     at(x + 2, y + hb - 2, " " * 65, c['bg'])
-    at(x + 2, y + hb - 2, f"completed: {s_total} success, {f_total} failed", c['bgg'] + c['w'] if f_total == 0 else c['bgr'] + c['w'])
+    result_msg = f"Completed: {s_total} success, {f_total} failed"
+    if f_total == 0:
+        at(x + 2, y + hb - 2, result_msg, c['bgg'] + c['w'])
+    else:
+        at(x + 2, y + hb - 2, result_msg, c['bgr'] + c['w'])
+    
+    # Save results to log file
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_filename = f"multisend_{timestamp}.log"
+    with open(log_filename, 'w') as f:
+        f.write(f"Multi-send results - {timestamp}\n")
+        f.write(f"Total addresses: {len(rcp)}\n")
+        f.write(f"Success: {s_total}\n")
+        f.write(f"Failed: {f_total}\n")
+        f.write(f"Total amount sent: {tot:.6f} OCT\n")
+    
+    at(x + 2, y + hb - 1, f"Results saved to {log_filename}", c['y'])
     await awaitkey()
-
 
 async def exp():
     cr = sz()
