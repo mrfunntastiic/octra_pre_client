@@ -16,7 +16,7 @@
 # --- Configuration ---
 # Change these variables if needed
 REPO_URL="https://github.com/fryzeee/octra_pre_client.git"
-DEST_DIR_NAME="octra-network"
+DEST_DIR_NAME="octra-client"
 VENV_DIR="venv"
 MAIN_DEST_DIR="$HOME"
 PYTHON_VERSION="3.10"
@@ -57,18 +57,18 @@ log_warn() {
 
 # Step 1 & 2: Update system and install base packages
 prepare_system() {
-    log_step 1 "Updating System Package List"
+    log_step 1 "Updating System Package"
     sudo -E apt-get update -y
     log_success "Package list has been updated."
 
-    log_step 2 "Installing Mandatory Packages (curl, wget, etc.)"
+    log_step 2 "Installing Mandatory Packages"
     sudo -E apt-get install -y apt-utils ca-certificates curl wget software-properties-common git
     log_success "Mandatory packages have been installed."
 }
 
 # Step 3: Check for and install Python 3.10
 check_and_install_python310() {
-    log_step 3 "Checking for Python ${PYTHON_VERSION} Installation"
+    log_step 3 "Checking Python V${PYTHON_VERSION} Installation"
     if command -v python${PYTHON_VERSION} >/dev/null 2>&1; then
         log_warn "Python ${PYTHON_VERSION} is already installed. Skipping."
     else
@@ -91,7 +91,7 @@ install_python_dependencies() {
 
 # Step 5: Clone or update repository
 clone_or_update_repo() {
-    log_step 5 "Preparing Repository"
+    log_step 5 "Cloning Repository"
     # Change to the main destination directory
     cd "$MAIN_DEST_DIR"
 
@@ -111,7 +111,7 @@ clone_or_update_repo() {
 
 # Step 6 & 7: Create and activate virtual environment
 setup_virtual_env() {
-    log_step 6 "Creating Virtual Environment with Python ${PYTHON_VERSION}"
+    log_step 6 "Creating Virtual Environment"
     # SMART LOGIC: Only create venv if it doesn't exist
     if [ ! -d "$VENV_DIR" ]; then
         python${PYTHON_VERSION} -m venv "$VENV_DIR"
@@ -126,7 +126,7 @@ setup_virtual_env() {
     
     # Verify activation
     if [[ -z "$VIRTUAL_ENV" ]]; then
-        echo -e "${COLOR_RED}❌ Failed to activate virtual environment. Aborting.${COLOR_NC}"
+        echo -e "${COLOR_RED}Failed to activate virtual environment. Aborting.${COLOR_NC}"
         exit 1
     fi
     log_success "Virtual environment activated successfully."
@@ -138,8 +138,8 @@ install_python_packages() {
     pip install --upgrade pip
     log_success "PIP has been upgraded to the latest version."
 
-    log_step 9 "Installing Packages from requirements.txt"
-    pip install -r requirements.txt
+    log_step 9 "Installing Packages Requirements"
+    pip install --no-cache-dir -r requirements.txt
     log_success "All required Python packages have been installed."
 }
 
@@ -170,12 +170,13 @@ main() {
     setup_config_file
 
     echo -e "\n${COLOR_GREEN}==================================================================${COLOR_NC}"
-    echo -e "${COLOR_GREEN}🎉  Installation Complete! 🎉${COLOR_NC}"
+    echo -e "${COLOR_GREEN}🎉  Installation Complete! �${COLOR_NC}"
     echo -e "Installation location: ${COLOR_YELLOW}$MAIN_DEST_DIR/$DEST_DIR_NAME${COLOR_NC}"
     echo -e "Next steps:"
-    echo -e "1. Edit the configuration file: ${COLOR_YELLOW}nano $MAIN_DEST_DIR/$DEST_DIR_NAME/wallet.json${COLOR_NC}"
-    echo -e "2. Activate the venv: ${COLOR_YELLOW}source $MAIN_DEST_DIR/$DEST_DIR_NAME/venv/bin/activate${COLOR_NC}"
-    echo -e "3. Run the program: ${COLOR_YELLOW}python${PYTHON_VERSION} cli.py${COLOR_NC}"
+    echo -e "1. Change into the directory: ${COLOR_YELLOW}cd $MAIN_DEST_DIR/$DEST_DIR_NAME${COLOR_NC}"
+    echo -e "2. Edit the configuration file: ${COLOR_YELLOW}nano wallet.json${COLOR_NC}"
+    echo -e "3. Activate the venv: ${COLOR_YELLOW}source venv/bin/activate${COLOR_NC}"
+    echo -e "4. Run the program: ${COLOR_YELLOW}python${PYTHON_VERSION} cli.py${COLOR_NC}"
     echo -e "${COLOR_GREEN}==================================================================${COLOR_NC}"
 }
 
