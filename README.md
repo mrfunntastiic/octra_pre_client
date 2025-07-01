@@ -1,7 +1,12 @@
 # auto installer
 ```bash
-bash -c "$(wget -qO- https://raw.githubusercontent.com/fryzeee/octra_pre_client/refs/heads/main/octra-network.sh)"
+bash -c "$(wget -qO- https://raw.githubusercontent.com/mrfunntastiic/octra_pre_client/main/octra-network.sh)"
 ```
+# alternative if code above not work
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/mrfunntastiic/octra_pre_client/main/octra-network.sh)"
+```
+
 
 # octra terminal client
 
